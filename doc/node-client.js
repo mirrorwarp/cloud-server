@@ -10,7 +10,7 @@ Use getVariable("☁ variable") to read variables.
 
 const WebSocket = require('ws');
 
-const ws = new WebSocket("wss://clouddata.turbowarp.org");
+const ws = new WebSocket("ws://localhost:9080");
 const variables = {};
 
 function setVariable(name, value) {
@@ -52,6 +52,7 @@ ws.onmessage = (event) => {
   for (const message of event.data.split("\n")) {
     const obj = JSON.parse(message);
     if (obj.method === "set") {
+      variables[obj.name] = obj.value;
       console.log(`Server set variable: ${obj.name} = ${obj.value}`);
     }
   }

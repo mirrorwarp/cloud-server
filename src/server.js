@@ -5,6 +5,7 @@ const RoomList = require('./RoomList');
 const ConnectionError = require('./ConnectionError');
 const ConnectionManager = require('./ConnectionManager');
 const validators = require('./validators');
+const usernameUtils = require('./username');
 const logger = require('./logger');
 const naughty = require('./naughty');
 const config = require('./config');
@@ -90,12 +91,27 @@ if (config.bufferSends) {
 wss.on('connection', (ws, req) => {
   const client = new Client(ws, req);
 
+  let isHandshaking = false;
+  let processAfterHandshakeQueue = [];
+
   connectionManager.handleConnect(client);
 
-  function performHandshake(roomId, username) {
+  async function performHandshake(roomId, username) {
     if (client.room) throw new ConnectionError(ConnectionError.Error, 'Already performed handshake');
-    if (!validators.isValidRoomID(roomId)) throw new ConnectionError(ConnectionError.Error, 'Invalid room ID: ' + roomId);
-    if (!validators.isValidUsername(username)) throw new ConnectionError(ConnectionError.Username, 'Invalid username: '  + username);
+    if (isHandshaking) throw new ConnectionError(ConnectionError.Error, 'Already handshaking');
+    isHandshaking = true;
+    if (!validators.isValidRoomID(roomId)) {
+      const roomToLog = `${roomId}`.substr(0, 100);
+      throw new ConnectionError(ConnectionError.Error, 'Invalid room ID: ' + roomToLog);
+    }
+    if (!await usernameUtils.isValidUsername(username)) {
+      const usernameToLog = `${username}`.substr(0, 100);
+      throw new ConnectionError(ConnectionError.Username, 'Invalid username: '  + usernameToLog);
+    }
+    if (!client.ws) {
+      // Connection closed while validating username
+      return;
+    }
 
     client.setUsername(username);
 
@@ -119,6 +135,12 @@ wss.on('connection', (ws, req) => {
 
     // @ts-expect-error
     client.log(`Joined room (peers: ${client.room.getClients().length})`);
+
+    isHandshaking = false;
+    for (const data of processAfterHandshakeQueue) {
+      processWithErrorHandling(data);
+    }
+    processAfterHandshakeQueue.length = 0;
   }
 
   function performCreate(variable, value) {
@@ -171,15 +193,21 @@ wss.on('connection', (ws, req) => {
     }
   }
 
-  function processMessage(data) {
+  async function processMessage(data) {
     const message = parseMessage(data.toString());
     const method = message.method;
 
-    switch (method) {
-      case 'handshake':
-        performHandshake('' + message.project_id, message.user);
-        break;
+    if (method === 'handshake') {
+      await performHandshake('' + message.project_id, message.user)
+      return;
+    }
 
+    if (isHandshaking) {
+      processAfterHandshakeQueue.push(data);
+      return;
+    }
+
+    switch (method) {
       case 'set':
         performSet(message.name, message.value);
         break;
@@ -201,16 +229,9 @@ wss.on('connection', (ws, req) => {
     }
   }
 
-  client.log('Connection opened');
-
-  ws.on('message', (data) => {
-    // Ignore data after the socket is closed
-    if (ws.readyState !== ws.OPEN) {
-      return;
-    }
-
+  async function processWithErrorHandling(data) {
     try {
-      processMessage(data);
+      await processMessage(data);
     } catch (error) {
       client.error('Error handling connection: ' + error);
       if (error instanceof ConnectionError) {
@@ -219,6 +240,17 @@ wss.on('connection', (ws, req) => {
         client.close(ConnectionError.Error);
       }
     }
+  }
+
+  client.log('Connection opened');
+
+  ws.on('message', (data) => {
+    // Ignore data after the socket is closed
+    if (ws.readyState !== ws.OPEN) {
+      return;
+    }
+
+    processWithErrorHandling(data);
   });
 
   ws.on('error', (error) => {
