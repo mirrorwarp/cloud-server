@@ -1,6 +1,6 @@
 # cloud-server
 
-A cloud data server for Scratch 3. Used by [forkphorus](https://forkphorus.github.io/) and [TurboWarp](https://turbowarp.org/).
+A cloud data server for Scratch 3. Used by [forkphorus](https://forkphorus.github.io/) and [MirrorWarp](https://mirrorwarp.github.io/).
 
 It uses a protocol very similar to Scratch 3's cloud variable protocol. See doc/protocol.md for further details.
 
@@ -25,7 +25,7 @@ By default the server is listening on ws://localhost:9080/. To change the port o
 
 To use a local cloud variable server in forkphorus, you can use the `chost` URL parameter, for example: https://forkphorus.github.io/?chost=ws://localhost:9080/
 
-You can do a similar thing in TurboWarp with the `cloud_host` URL parameter: https://turbowarp.org/?cloud_host=ws://localhost:9080/
+You can do a similar thing in MirrorWarp with the `cloud_host` URL parameter: https://mirrorwarp.github.io/?cloud_host=ws://localhost:9080/
 
 ## Configuration
 
